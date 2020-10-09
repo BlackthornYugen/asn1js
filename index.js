@@ -27,8 +27,9 @@ function text(el, string) {
     else
         el.innerText = string;
 }
-function decode(der, offset) {
+function decode(der, offset, updateHash) {
     offset = offset || 0;
+    updateHash = updateHash == undefined ? true : false;
     tree.innerHTML = '';
     dump.innerHTML = '';
     try {
@@ -39,10 +40,12 @@ function decode(der, offset) {
         var b64 = (der.length < maxLength) ? asn1.toB64String() : '';
         if (area.value === '')
             area.value = Base64.pretty(b64);
-        try {
-            window.location.hash = hash = '#' + b64;
-        } catch (e) { // fails with "Access Denied" on IE with URLs longer than ~2048 chars
-            window.location.hash = hash = '#';
+        if (updateHash) {
+            try {
+                window.location.hash = hash = '#' + b64;
+            } catch (e) { // fails with "Access Denied" on IE with URLs longer than ~2048 chars
+                window.location.hash = hash = '#';
+            }
         }
         var endOffset = asn1.posEnd();
         if (endOffset < der.length) {
@@ -60,10 +63,10 @@ function decode(der, offset) {
         text(tree, e);
     }
 }
-function decodeText(val) {
+function decodeText(val, updateHash) {
     try {
         var der = reHex.test(val) ? Hex.decode(val) : Base64.unarmor(val);
-        decode(der);
+        decode(der, 0, updateHash);
     } catch (e) {
         text(tree, e);
         dump.innerHTML = '';
@@ -109,6 +112,25 @@ id('butExample').onclick = function () {
     };
     request.send();
 };
+id('storage').onchange = function () {
+    console.log('Loading from storage:', storage.options[storage.selectedIndex].text);
+    decodeText(storage.value);
+};
+
+// Populate local storage
+if (null == window.localStorage.getItem("storeValues")) {
+    storage.parentElement.style.display = "none";
+} else {
+    storage.parentElement.style.display = null;
+    let valuesObject = JSON.parse(localStorage.storeValues);
+    for (let key in valuesObject ) {
+        let option = document.createElement("option");
+        option.text = key;
+        option.value = valuesObject[key];
+        storage.add(option);
+    }
+}
+
 // this is only used if window.FileReader
 function read(f) {
     area.value = ''; // clear text area, will get b64 content
@@ -134,8 +156,33 @@ function loadFromHash() {
         // already-decoded hash string so we risk double-decoding here,
         // but since % is not allowed in base64 nor hexadecimal, it's ok
         var val = decodeURIComponent(hash.substr(1));
-        if (val.length)
-            decodeText(val);
+        if (val.length) {
+            let KEYWORD="FETCH#";
+            if (val.startsWith(KEYWORD)) {
+                let url=val.substring(KEYWORD.length);
+
+    console.log('Loading url:', url);
+    var request = new XMLHttpRequest();
+    request.open('GET', url, true);
+    request.onreadystatechange = function() {
+        if (this.readyState !== 4)
+            return;
+        if (this.status >= 200 && this.status < 400) {
+            area.value = this.responseText;
+            decodeText(this.responseText, false);
+        } else {
+            console.log('Error loading example.');
+        }
+    };
+    request.send();
+
+
+
+
+            } else {
+                decodeText(val);
+            }
+        }
     }
 }
 function stop(e) {
@@ -150,7 +197,11 @@ function dragAccept(e) {
 // main
 if ('onhashchange' in window)
     window.onhashchange = loadFromHash;
-loadFromHash();
+if (null == window.localStorage.getItem("storeValues")) {
+    loadFromHash();
+} else {
+    storage.onchange();
+}
 document.ondragover = stop;
 document.ondragleave = stop;
 if ('FileReader' in window && 'readAsBinaryString' in (new FileReader())) {

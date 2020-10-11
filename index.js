@@ -9,6 +9,7 @@ var ASN1 = require('./asn1'),
     Hex = require('./hex'),
     maxLength = 10240,
     reHex = /^\s*(?:[0-9A-Fa-f][0-9A-Fa-f]\s*)+$/,
+    reJson = /^\[/,
     tree = id('tree'),
     dump = id('dump'),
     wantHex = id('wantHex'),
@@ -65,7 +66,19 @@ function decode(der, offset, updateHash) {
 }
 function decodeText(val, updateHash) {
     try {
-        var der = reHex.test(val) ? Hex.decode(val) : Base64.unarmor(val);
+        var der;
+
+        if (reHex.test(val)) {
+            der = Hex.decode(val);
+        } else if (reJson.test(val)) {
+            localStorage.storeValues = val;
+            loadJson();
+            console.log("Loading first json element: " + storage.options[storage.selectedIndex].text)
+            return decodeText(storage.value, updateHash);
+        } else {
+            der = Base64.unarmor(val);
+        }
+
         decode(der, 0, updateHash);
     } catch (e) {
         text(tree, e);
@@ -89,6 +102,10 @@ function decodeBinaryString(str) {
 }
 // set up buttons
 id('butDecode').onclick = function () { decodeText(area.value); };
+id('butClearStorage').onclick = function () {
+    localStorage.clear();
+    storage.parentElement.style.display = "none";
+}
 id('butClear').onclick = function () {
     area.value = '';
     file.value = '';
@@ -121,14 +138,7 @@ id('storage').onchange = function () {
 if (null == window.localStorage.getItem("storeValues")) {
     storage.parentElement.style.display = "none";
 } else {
-    storage.parentElement.style.display = null;
-    let valuesObject = JSON.parse(localStorage.storeValues);
-    for (let key in valuesObject ) {
-        let option = document.createElement("option");
-        option.text = key;
-        option.value = valuesObject[key];
-        storage.add(option);
-    }
+    loadJson();
 }
 
 // this is only used if window.FileReader
@@ -148,6 +158,21 @@ function load() {
         alert("Select a file to load first.");
     else
         read(file.files[0]);
+}
+function loadJson() {
+    storage.parentElement.style.display = null;
+    let valuesObject = JSON.parse(localStorage.storeValues);
+
+    for (let i = storage.options.length; i > 0; i--) {
+        storage.options[i - 1].remove();
+    }
+
+    for (let key in valuesObject ) {
+        let option = document.createElement("option");
+        option.text = valuesObject[key].name;
+        option.value = valuesObject[key].data;
+        storage.add(option);
+    }
 }
 function loadFromHash() {
     if (window.location.hash && window.location.hash != hash) {
